@@ -1,48 +1,66 @@
 import os
 import requests
-from bs4 import BeautifulSoup
 
 TOKEN = os.environ["TG_TOKEN"]
 CHAT_ID = os.environ["TG_CHAT_ID"]
 QUEUES = ["4.2", "5.2"]
 
-URL = "https://svitlo.oe.if.ua/"
+API_URL = "https://be-svitlo.oe.if.ua/schedule-by-queue"
 STATE_FILE = "last_schedule.txt"
 
 
-def fetch_page():
+def fetch_queue(queue):
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/131.0.0.0 Safari/537.36"
         ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "uk-UA,uk;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://svitlo.oe.if.ua",
         "Referer": "https://svitlo.oe.if.ua/",
     }
-    resp = requests.get(URL, headers=headers, timeout=20)
+    resp = requests.get(API_URL, params={"queue": queue}, headers=headers, timeout=20)
     resp.raise_for_status()
-    return resp.text
+    data = resp.json()
 
+    if not data:
+        return "Графік відсутній або світло не вимикають"
 
-def get_queue_text(soup, queue):
-    matches = []
-    for el in soup.find_all(["div", "tr", "p", "li", "span", "td"]):
-        text = el.get_text(" ", strip=True)
-        if queue in text and len(text) < 600:
-            if text not in matches:
-                matches.append(text)
-    return "\n".join(matches[:4]) if matches else "Даних у статичному HTML не знайдено"
+    days = data if isinstance(data, list) else [data]
+    lines = []
+
+    for day in days:
+        date = day.get("eventDate", "Дата невідома")
+        q_items = day.get("queues", {}).get(queue, [])
+
+        if not q_items:
+            lines.append(f"📅 <b>{date}:</b> без відключень")
+            continue
+
+        slots = []
+        for item in q_items:
+            status = item.get("status")
+            time_str = item.get("shutdownHours") or f"{item.get('from', '?')}–{item.get('to', '?')}"
+            if status == 1:
+                slots.append(f"🔴 {time_str}")
+            elif status == 2:
+                slots.append(f"🟡 {time_str} (можливо)")
+            elif status is None:
+                slots.append(f"🔴 {time_str}")
+
+        if slots:
+            lines.append(f"📅 <b>{date}:</b>\n" + "\n".join(slots))
+        else:
+            lines.append(f"📅 <b>{date}:</b> без відключень")
+
+    return "\n\n".join(lines) if lines else str(data)[:400]
 
 
 def get_all_schedules():
-    html = fetch_page()
-    soup = BeautifulSoup(html, "html.parser")
-
     parts = []
     for q in QUEUES:
-        info = get_queue_text(soup, q)
+        info = fetch_queue(q)
         parts.append(f"<b>Черга {q}:</b>\n{info}")
     return "\n\n──────────\n\n".join(parts)
 
