@@ -4,26 +4,41 @@ from bs4 import BeautifulSoup
 
 TOKEN = os.environ["TG_TOKEN"]
 CHAT_ID = os.environ["TG_CHAT_ID"]
-QUEUES = ["4.2", "5.2"]  # Потрібні черги
+QUEUES = ["4.2", "5.2"]
 
-URL = "https://pulse.if.ua/svitlo"
+URL = "https://svitlo.oe.if.ua/"
 STATE_FILE = "last_schedule.txt"
 
 
+def fetch_page():
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "uk-UA,uk;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://svitlo.oe.if.ua/",
+    }
+    resp = requests.get(URL, headers=headers, timeout=20)
+    resp.raise_for_status()
+    return resp.text
+
+
 def get_queue_text(soup, queue):
-    text_blocks = [
-        el.get_text(" ", strip=True)
-        for el in soup.find_all(["div", "tr", "p", "li"])
-        if f"Черга {queue}" in el.get_text() or queue in el.get_text()
-    ]
-    return "\n".join(text_blocks[:3]) if text_blocks else "Даних не знайдено"
+    matches = []
+    for el in soup.find_all(["div", "tr", "p", "li", "span", "td"]):
+        text = el.get_text(" ", strip=True)
+        if queue in text and len(text) < 600:
+            if text not in matches:
+                matches.append(text)
+    return "\n".join(matches[:4]) if matches else "Даних у статичному HTML не знайдено"
 
 
 def get_all_schedules():
-    headers = {"User-Agent": "Mozilla/5.0"}
-    resp = requests.get(URL, headers=headers, timeout=15)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
+    html = fetch_page()
+    soup = BeautifulSoup(html, "html.parser")
 
     parts = []
     for q in QUEUES:
@@ -34,15 +49,16 @@ def get_all_schedules():
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(
+    resp = requests.post(
         api_url,
         json={
             "chat_id": CHAT_ID,
             "text": message,
             "parse_mode": "HTML",
         },
-        timeout=10,
+        timeout=15,
     )
+    resp.raise_for_status()
 
 
 def main():
