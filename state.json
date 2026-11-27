@@ -1,7 +1,7 @@
 {
-  "last_update_id": 169045321,
-  "quiet_start": "23:00",
-  "quiet_end": "07:00",
+  "last_update_id": 169045322,
+  "quiet_start": null,
+  "quiet_end": null,
   "schedules": {
     "4.2": {
       "27.11.2026": "🔴 06:00-08:00\n🔴 11:30-15:00\n🔴 18:30-22:00"
